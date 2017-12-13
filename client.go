@@ -147,7 +147,7 @@ func (cc *ConohaClient) CpuUsage(s Server) (map[string]float64, error) {
 		return nil, err
 	}
 
-	data := uResp.CPU.Data[len(uResp.CPU.Data)-5]
+	data := uResp.CPU.Data[len(uResp.CPU.Data)-3]
 	usage := make(map[string]float64)
 	for i, label := range uResp.CPU.Schema {
 		usage[label] = data[i]
@@ -166,7 +166,7 @@ func (cc *ConohaClient) DiskUsage(s Server) (map[string]float64, error) {
 		return nil, err
 	}
 
-	data := uResp.Disk.Data[len(uResp.Disk.Data)-5]
+	data := uResp.Disk.Data[len(uResp.Disk.Data)-3]
 	usage := make(map[string]float64)
 	for i, label := range uResp.Disk.Schema {
 		usage[label] = data[i]
@@ -185,7 +185,7 @@ func (cc *ConohaClient) InterfaceUsage(s Server, i Interface) (map[string]float6
 		return nil, err
 	}
 
-	data := uResp.Interface.Data[len(uResp.Interface.Data)-5]
+	data := uResp.Interface.Data[len(uResp.Interface.Data)-3]
 	usage := make(map[string]float64)
 	for i, label := range uResp.Interface.Schema {
 		usage[label] = data[i]

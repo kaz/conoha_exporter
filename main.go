@@ -28,11 +28,16 @@ func indexPage(w http.ResponseWriter, r *http.Request) {
 func main() {
 	log.Println("ConoHa exporter started.")
 
-	region := flag.String("region", "tyo1", "Region")
-	tenantId := flag.String("tenant-id", "", "Your tenant ID")
-	username := flag.String("username", "", "Your API user name")
-	password := flag.String("password", "", "Your API user password")
+	port := flag.String("port", os.Getenv("PORT"), "Port number to listen on")
+	region := flag.String("region", "tyo1", "ConoHa region")
+	tenantId := flag.String("tenant-id", "", "ConoHa tenant ID")
+	username := flag.String("username", "", "ConoHa API user name")
+	password := flag.String("password", "", "ConoHa API user password")
 	flag.Parse()
+
+	if *port == "" {
+		*port = "3000"
+	}
 
 	client, err := NewClient(*region, *tenantId, *username, *password)
 	if err != nil {
@@ -48,12 +53,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000"
-	}
-
+	go exporter.AutoUpdate()
 	http.HandleFunc("/", indexPage)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
