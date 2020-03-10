@@ -4,12 +4,11 @@
 
 ```shell
 cd $GOPATH/src
-git clone https://github.com/kaz/conoha_exporter.git
+git clone https://github.com/traPtitech/conoha_exporter.git
 
 cd conoha_exporter
 
-go get -u github.com/golang/dep/cmd/dep
-PATH=$PATH:$GOPATH/bin dep ensure
+go mod download
 
 go build
 ./conoha_exporter --help
