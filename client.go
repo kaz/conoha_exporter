@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 )
@@ -11,7 +12,9 @@ import (
 type ConohaClient struct {
 	http.Client
 	region                  string
+	requestNewToken         func(c *http.Client) (*TokenResponse, error)
 	token                   string
+	tokenExpires            time.Time
 	accountEndpoint         string
 	databaseHostingEndpoint string
 }
@@ -47,36 +50,10 @@ type Access struct {
 func NewClient(region string, tenantId string, username string, password string) (*ConohaClient, error) {
 	client := &ConohaClient{region: region}
 
-	// リクエストJSONを組み立てる
-	data, err := json.Marshal(map[string]interface{}{
-		"auth": map[string]interface{}{
-			"passwordCredentials": map[string]string{
-				"username": username,
-				"password": password,
-			},
-			"tenantId": tenantId,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
+	client.requestNewToken = tokenRequester(region, tenantId, username, password)
 
-	// トークン発行リクエスト
-	resp, err := client.Post("https://identity."+region+".conoha.io/v2.0/tokens", "application/json", bytes.NewReader(data))
+	respData, err := client.requestNewToken(&client.Client)
 	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// レスポンスボディを取得
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// JSONを読む
-	var respData TokenResponse
-	if err := json.Unmarshal(respBytes, &respData); err != nil {
 		return nil, err
 	}
 
@@ -86,6 +63,7 @@ func NewClient(region string, tenantId string, username string, password string)
 
 	// トークンを取得
 	client.token = access.Token.ID
+	client.tokenExpires = access.Token.Expires
 
 	// Account API / Database Hosting APIのエンドポイントを取得
 	for _, service := range serviceCatalog {
@@ -100,7 +78,58 @@ func NewClient(region string, tenantId string, username string, password string)
 	return client, nil
 }
 
+func tokenRequester(region string, tenantId string, username string, password string) func(c *http.Client) (*TokenResponse, error) {
+	return func(c *http.Client) (*TokenResponse, error) {
+		// リクエストJSONを組み立てる
+		data, err := json.Marshal(map[string]interface{}{
+			"auth": map[string]interface{}{
+				"passwordCredentials": map[string]string{
+					"username": username,
+					"password": password,
+				},
+				"tenantId": tenantId,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		// トークン発行リクエスト
+		resp, err := c.Post("https://identity."+region+".conoha.io/v2.0/tokens", "application/json", bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		// レスポンスボディを取得
+		respBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		// JSONを読む
+		var respData TokenResponse
+		if err := json.Unmarshal(respBytes, &respData); err != nil {
+			return nil, err
+		}
+
+		return &respData, nil
+	}
+}
+
 func (cc *ConohaClient) get(url string) ([]byte, error) {
+	// トークンの有効性を確認
+	if cc.tokenExpires.Before(time.Now().Add(time.Minute)) {
+		log.Println("Renewing token...")
+		tokenResp, err := cc.requestNewToken(&cc.Client)
+		if err != nil {
+			return nil, err
+		}
+		cc.token = tokenResp.Access.Token.ID
+		cc.tokenExpires = tokenResp.Access.Token.Expires
+		log.Printf("Renewed token, new expiration date: %v", cc.tokenExpires)
+	}
+
 	// GETリクエストを飛ばす
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
