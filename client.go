@@ -157,6 +157,7 @@ type Usage struct {
 	Data   [][]float64 `json:"data"`
 }
 
+// オブジェクトストレージへのリクエスト数を取得
 func (cc *ConohaClient) ObjectStorageRequests() (map[string]float64, error) {
 	// メトリクス取得
 	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/request")
@@ -185,6 +186,7 @@ type ObjectStorageSizeResponse struct {
 	Size Usage `json:"size"`
 }
 
+// オブジェクトストレージの使用容量を取得
 func (cc *ConohaClient) ObjectStorageUsage() (map[string]float64, error) {
 	// メトリクス取得
 	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/size")
@@ -227,8 +229,8 @@ type Database struct {
 	Type             string  `json:"type"`
 }
 
+// データベース一覧取得
 func (cc *ConohaClient) Databases() ([]*Database, error) {
-	// データベース一覧取得
 	resp, err := cc.get(cc.databaseHostingEndpoint + "/databases")
 	if err != nil {
 		return nil, err
@@ -259,9 +261,9 @@ type Quota struct {
 	Quota      int     `json:"quota"`
 }
 
-func (cc *ConohaClient) DatabaseQuota(d *Database) (*Quota, error) {
-	// データベース使用容量/上限値取得（GB単位）
-	resp, err := cc.get(cc.databaseHostingEndpoint + "/services/" + d.ServiceID + "/quotas")
+// データベース上限値取得（GB単位）
+func (cc *ConohaClient) DatabaseQuota(serviceID string) (*Quota, error) {
+	resp, err := cc.get(cc.databaseHostingEndpoint + "/services/" + serviceID + "/quotas")
 	if err != nil {
 		return nil, err
 	}
@@ -273,4 +275,25 @@ func (cc *ConohaClient) DatabaseQuota(d *Database) (*Quota, error) {
 	}
 
 	return &uResp.Quota, nil
+}
+
+// JSON 受け取り用
+type DatabaseInfoResponse struct {
+	Database Database `json:"database"`
+}
+
+// データベース情報取得（GB単位）
+func (cc *ConohaClient) DatabaseInfo(databaseID string) (*Database, error) {
+	resp, err := cc.get(cc.databaseHostingEndpoint + "/databases/" + databaseID)
+	if err != nil {
+		return nil, err
+	}
+
+	// JSONを読む
+	var uResp DatabaseInfoResponse
+	if err := json.Unmarshal(resp, &uResp); err != nil {
+		return nil, err
+	}
+
+	return &uResp.Database, nil
 }

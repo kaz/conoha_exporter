@@ -32,7 +32,7 @@ func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
 			// 4番目のnilには、固定ラベルをprometheus.Labelsで渡せる
 			prometheus.NewDesc("object_storage_requests", "Requests to Object Storage", []string{"method"}, nil),
 			prometheus.NewDesc("object_storage_usage", "Usage of Object Storage", []string{}, nil),
-			prometheus.NewDesc("database_usage", "Usage of Database Server (GB)", []string{"database"}, nil),
+			prometheus.NewDesc("database_usage", "Usage of Database (GB)", []string{"database"}, nil),
 		},
 		[]prometheus.Metric{},
 		databases,
@@ -56,13 +56,26 @@ func (cc *ConohaCollector) AutoUpdate() {
 		usage, err := cc.ObjectStorageUsage()
 		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage["value"]))
 
+		serviceIDs := make(map[string]bool)
+
 		for _, db := range cc.databases {
 			// データベース使用状況を取得
-			quota, err := cc.DatabaseQuota(db)
+			info, err := cc.DatabaseInfo(db.DatabaseID)
 			if err != nil {
 				log.Fatal(err)
 			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, quota.TotalUsage, db.DbName))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, info.DbSize, db.DbName))
+
+			serviceIDs[db.ServiceID] = true
+		}
+
+		for serviceID := range serviceIDs {
+			// データベース上限値取得
+			quota, err := cc.DatabaseQuota(serviceID)
+			if err != nil {
+				log.Fatal(err)
+			}
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, float64(quota.Quota), "Quota "+serviceID))
 		}
 
 		// メトリクスデータ更新
