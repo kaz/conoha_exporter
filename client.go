@@ -5,13 +5,43 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 type ConohaClient struct {
 	http.Client
-	region   string
-	token    string
-	endpoint string
+	region                  string
+	token                   string
+	accountEndpoint         string
+	databaseHostingEndpoint string
+}
+
+// JSON 受け取り用
+type TokenResponse struct {
+	Access Access `json:"access"`
+}
+type Token struct {
+	IssuedAt string      `json:"issued_at"`
+	Expires  time.Time   `json:"expires"`
+	ID       string      `json:"id"`
+	Tenant   interface{} `json:"tenant"`
+	AuditIds []string    `json:"audit_ids"`
+}
+type Endpoint struct {
+	Region    string `json:"region"`
+	PublicURL string `json:"publicURL"`
+}
+type ServiceCatalog struct {
+	Endpoints      []Endpoint    `json:"endpoints"`
+	EndpointsLinks []interface{} `json:"endpoints_links"`
+	Type           string        `json:"type"`
+	Name           string        `json:"name"`
+}
+type Access struct {
+	Token          Token            `json:"token"`
+	ServiceCatalog []ServiceCatalog `json:"serviceCatalog"`
+	User           interface{}      `json:"user"`
+	Metadata       interface{}      `json:"metadata"`
 }
 
 func NewClient(region string, tenantId string, username string, password string) (*ConohaClient, error) {
@@ -45,34 +75,34 @@ func NewClient(region string, tenantId string, username string, password string)
 	}
 
 	// JSONを読む
-	respData := make(map[string]interface{})
+	var respData TokenResponse
 	if err := json.Unmarshal(respBytes, &respData); err != nil {
 		return nil, err
 	}
 
-	// 値にアクセス（型アサーションがメンドウだったら、構造体を定義して読ませると良い感じになります。）
-	access := respData["access"].(map[string]interface{})
-	token := access["token"].(map[string]interface{})
-	serviceCatalog := access["serviceCatalog"].([]interface{})
+	// 値にアクセス
+	access := respData.Access
+	serviceCatalog := access.ServiceCatalog
 
 	// トークンを取得
-	client.token = token["id"].(string)
+	client.token = access.Token.ID
 
-	// Compute APIのエンドポイントを取得
+	// Account API / Database Hosting APIのエンドポイントを取得
 	for _, service := range serviceCatalog {
-		svcMap := service.(map[string]interface{})
-		if svcMap["type"].(string) == "compute" {
-			client.endpoint = svcMap["endpoints"].([]interface{})[0].(map[string]interface{})["publicURL"].(string)
-			break
+		switch service.Type {
+		case "account":
+			client.accountEndpoint = service.Endpoints[0].PublicURL
+		case "databasehosting":
+			client.databaseHostingEndpoint = service.Endpoints[0].PublicURL
 		}
 	}
 
 	return client, nil
 }
 
-func (cc *ConohaClient) get(path string) ([]byte, error) {
-	// Compute APIにGETリクエストを飛ばす
-	req, err := http.NewRequest("GET", cc.endpoint+path, nil)
+func (cc *ConohaClient) get(url string) ([]byte, error) {
+	// GETリクエストを飛ばす
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -89,134 +119,129 @@ func (cc *ConohaClient) get(path string) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-// JSON受取用
-type ServersResponse struct {
-	Servers []Server
-}
-type Server struct {
-	ID         string
-	Name       string
-	Interfaces []Interface
-}
-
-// JSON受取用
-type InterfaceResponse struct {
-	InterfaceAttachments []Interface
-}
-type Interface struct {
-	PortID  string `json:"port_id"`
-	MacAddr string `json:"mac_addr"`
-}
-
-func (cc *ConohaClient) Servers() ([]Server, error) {
-	// インスタンス一覧情報を取得
-	resp, err := cc.get("/servers")
-	if err != nil {
-		return nil, err
-	}
-
-	// JSONを読む
-	var sResp ServersResponse
-	if err := json.Unmarshal(resp, &sResp); err != nil {
-		return nil, err
-	}
-
-	servers := []Server{}
-	for _, s := range sResp.Servers {
-		// インスタンスにくっついてるインタフェースの情報を取得する
-		resp, err := cc.get("/servers/" + s.ID + "/os-interface")
-		if err != nil {
-			return nil, err
-		}
-
-		// JSONを読む
-		var iResp InterfaceResponse
-		if err := json.Unmarshal(resp, &iResp); err != nil {
-			return nil, err
-		}
-
-		// Server構造体に情報を付け加える
-		s.Interfaces = iResp.InterfaceAttachments
-		servers = append(servers, s)
-	}
-
-	return servers, nil
-}
-
-// JSON受取用
-type UsageResponse struct {
-	CPU       Usage
-	Disk      Usage
-	Interface Usage
+// JSON 受け取り用
+type ObjectStorageRequestsResponse struct {
+	Request Usage `json:"request"`
 }
 type Usage struct {
-	Schema []string
-	Data   [][]float64
+	Schema []string    `json:"schema"`
+	Data   [][]float64 `json:"data"`
 }
 
-func (cc *ConohaClient) CpuUsage(s Server) (map[string]float64, error) {
+func (cc *ConohaClient) ObjectStorageRequests() (map[string]float64, error) {
 	// メトリクス取得
-	resp, err := cc.get("/servers/" + s.ID + "/rrd/cpu")
+	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/request")
 	if err != nil {
 		return nil, err
 	}
 
 	// JSONを読む
-	var uResp UsageResponse
+	var uResp ObjectStorageRequestsResponse
 	if err := json.Unmarshal(resp, &uResp); err != nil {
 		return nil, err
 	}
 
 	// データ整形
-	data := uResp.CPU.Data[len(uResp.CPU.Data)-3]
+	data := uResp.Request.Data[len(uResp.Request.Data)-3]
 	usage := make(map[string]float64)
-	for i, label := range uResp.CPU.Schema {
+	for i, label := range uResp.Request.Schema {
 		usage[label] = data[i]
 	}
 
 	return usage, nil
 }
-func (cc *ConohaClient) DiskUsage(s Server) (map[string]float64, error) {
+
+// JSON 受け取り用
+type ObjectStorageSizeResponse struct {
+	Size Usage `json:"size"`
+}
+
+func (cc *ConohaClient) ObjectStorageUsage() (map[string]float64, error) {
 	// メトリクス取得
-	resp, err := cc.get("/servers/" + s.ID + "/rrd/disk")
+	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/size")
 	if err != nil {
 		return nil, err
 	}
 
 	// JSONを読む
-	var uResp UsageResponse
+	var uResp ObjectStorageSizeResponse
 	if err := json.Unmarshal(resp, &uResp); err != nil {
 		return nil, err
 	}
 
 	// データ整形
-	data := uResp.Disk.Data[len(uResp.Disk.Data)-3]
+	data := uResp.Size.Data[len(uResp.Size.Data)-3]
 	usage := make(map[string]float64)
-	for i, label := range uResp.Disk.Schema {
+	for i, label := range uResp.Size.Schema {
 		usage[label] = data[i]
 	}
 
 	return usage, nil
 }
-func (cc *ConohaClient) InterfaceUsage(s Server, i Interface) (map[string]float64, error) {
-	// メトリクス取得
-	resp, err := cc.get("/servers/" + s.ID + "/rrd/interface?port_id=" + i.PortID)
+
+// JSON 受け取り用
+type DatabaseListResponse struct {
+	TotalCount   int        `json:"total_count"`
+	CurrentCount int        `json:"current_count"`
+	Databases    []Database `json:"databases"`
+}
+type Database struct {
+	Status           string  `json:"status"`
+	InternalHostname string  `json:"internal_hostname"`
+	Memo             string  `json:"memo"`
+	Charset          string  `json:"charset"`
+	DatabaseID       string  `json:"database_id"`
+	DbName           string  `json:"db_name"`
+	DbSize           float64 `json:"db_size"`
+	ServiceID        string  `json:"service_id"`
+	ExternalHostname string  `json:"external_hostname"`
+	Type             string  `json:"type"`
+}
+
+func (cc *ConohaClient) Databases() ([]*Database, error) {
+	// データベース一覧取得
+	resp, err := cc.get(cc.databaseHostingEndpoint + "/databases")
 	if err != nil {
 		return nil, err
 	}
 
 	// JSONを読む
-	var uResp UsageResponse
+	var uResp DatabaseListResponse
 	if err := json.Unmarshal(resp, &uResp); err != nil {
 		return nil, err
 	}
 
-	// データ整形
-	data := uResp.Interface.Data[len(uResp.Interface.Data)-3]
-	usage := make(map[string]float64)
-	for i, label := range uResp.Interface.Schema {
-		usage[label] = data[i]
+	databases := make([]*Database, 0)
+
+	for _, d := range uResp.Databases {
+		database := d
+		databases = append(databases, &database)
 	}
 
-	return usage, nil
+	return databases, nil
+}
+
+// JSON 受け取り用
+type DatabaseQuotaResponse struct {
+	Quota Quota `json:"quota"`
+}
+type Quota struct {
+	TotalUsage float64 `json:"total_usage"`
+	Quota      int     `json:"quota"`
+}
+
+func (cc *ConohaClient) DatabaseQuota(d *Database) (*Quota, error) {
+	// データベース使用容量/上限値取得（GB単位）
+	resp, err := cc.get(cc.databaseHostingEndpoint + "/services/" + d.ServiceID + "/quotas")
+	if err != nil {
+		return nil, err
+	}
+
+	// JSONを読む
+	var uResp DatabaseQuotaResponse
+	if err := json.Unmarshal(resp, &uResp); err != nil {
+		return nil, err
+	}
+
+	return &uResp.Quota, nil
 }

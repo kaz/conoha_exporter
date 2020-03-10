@@ -11,8 +11,8 @@ import (
 )
 
 // インデックスページ用 (Prometheusは別にココを触らないので、お好みで……)
-func indexPage(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(`
+func indexPage(w http.ResponseWriter, _ *http.Request) {
+	_, _ = w.Write([]byte(`
 		<!DOCTYPE html>
 		<html>
 		<head>

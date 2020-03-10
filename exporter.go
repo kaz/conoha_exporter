@@ -13,12 +13,12 @@ type ConohaCollector struct {
 	*sync.RWMutex
 	describes []*prometheus.Desc
 	metrics   []prometheus.Metric
-	servers   []Server
+	databases []*Database
 }
 
 func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
-	// インスタンス一覧取得
-	servers, err := client.Servers()
+	// データベース一覧を取得
+	databases, err := client.Databases()
 	if err != nil {
 		return nil, err
 	}
@@ -30,44 +30,39 @@ func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
 		[]*prometheus.Desc{
 			// NewDescの3番目の引数は可変ラベル（NewConstMetricの最後の可変長引数に対応してる）
 			// 4番目のnilには、固定ラベルをprometheus.Labelsで渡せる
-			prometheus.NewDesc("conoha_cpu", "CPU usage of ConoHa instance", []string{"instance"}, nil),
-			prometheus.NewDesc("conoha_disk", "Disk usage of ConoHa instance", []string{"instance", "rw"}, nil),
-			prometheus.NewDesc("conoha_interface", "Interface usage of ConoHa instance", []string{"instance", "mac", "direction"}, nil),
+			prometheus.NewDesc("object_storage_requests", "Requests to Object Storage", []string{"method"}, nil),
+			prometheus.NewDesc("object_storage_usage", "Usage of Object Storage", []string{}, nil),
+			prometheus.NewDesc("database_usage", "Usage of Database Server (GB)", []string{"database"}, nil),
 		},
 		[]prometheus.Metric{},
-		servers,
+		databases,
 	}, nil
 }
 
 func (cc *ConohaCollector) AutoUpdate() {
 	for {
-		metrics := []prometheus.Metric{}
+		metrics := make([]prometheus.Metric, 0)
 
-		for _, srv := range cc.servers {
-			// CPU使用状況を取得
-			cpu, err := cc.CpuUsage(srv)
+		// オブジェクトストレージへのリクエスト数を取得
+		requests, err := cc.ObjectStorageRequests()
+		if err != nil {
+			log.Fatal(err)
+		}
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["get"], "get"))
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["put"], "put"))
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["delete"], "delete"))
+
+		// オブジェクトストレージ使用容量を取得
+		usage, err := cc.ObjectStorageUsage()
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage["value"]))
+
+		for _, db := range cc.databases {
+			// データベース使用状況を取得
+			quota, err := cc.DatabaseQuota(db)
 			if err != nil {
 				log.Fatal(err)
 			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, cpu["value"], srv.Name))
-
-			// ディスク使用状況を取得
-			disk, err := cc.DiskUsage(srv)
-			if err != nil {
-				log.Fatal(err)
-			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, disk["read"], srv.Name, "read"))
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, disk["write"], srv.Name, "write"))
-
-			// インタフェース使用状況を取得
-			for _, ifaceDef := range srv.Interfaces {
-				iface, err := cc.InterfaceUsage(srv, ifaceDef)
-				if err != nil {
-					log.Fatal(err)
-				}
-				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, iface["rx"], srv.Name, ifaceDef.MacAddr, "rx"))
-				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, iface["tx"], srv.Name, ifaceDef.MacAddr, "tx"))
-			}
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, quota.TotalUsage, db.DbName))
 		}
 
 		// メトリクスデータ更新
