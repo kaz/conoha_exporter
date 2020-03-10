@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -16,6 +17,7 @@ type ConohaClient struct {
 	token                   string
 	tokenExpires            time.Time
 	accountEndpoint         string
+	objectStorageEndpoint   string
 	databaseHostingEndpoint string
 }
 
@@ -70,6 +72,8 @@ func NewClient(region string, tenantId string, username string, password string)
 		switch service.Type {
 		case "account":
 			client.accountEndpoint = service.Endpoints[0].PublicURL
+		case "object-store":
+			client.objectStorageEndpoint = service.Endpoints[0].PublicURL
 		case "databasehosting":
 			client.databaseHostingEndpoint = service.Endpoints[0].PublicURL
 		}
@@ -117,13 +121,13 @@ func tokenRequester(region string, tenantId string, username string, password st
 	}
 }
 
-func (cc *ConohaClient) get(url string) ([]byte, error) {
+func (cc *ConohaClient) get(url string) ([]byte, *http.Header, error) {
 	// トークンの有効性を確認
 	if cc.tokenExpires.Before(time.Now().Add(time.Minute)) {
 		log.Println("Renewing token...")
 		tokenResp, err := cc.requestNewToken(&cc.Client)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cc.token = tokenResp.Access.Token.ID
 		cc.tokenExpires = tokenResp.Access.Token.Expires
@@ -133,19 +137,23 @@ func (cc *ConohaClient) get(url string) ([]byte, error) {
 	// GETリクエストを飛ばす
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// ヘッダーにトークンをセットする
 	req.Header.Set("X-Auth-Token", cc.token)
 	resp, err := cc.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	// レスポンスボディを返す
-	return ioutil.ReadAll(resp.Body)
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return buf, &resp.Header, nil
 }
 
 // JSON 受け取り用
@@ -160,7 +168,7 @@ type Usage struct {
 // オブジェクトストレージへのリクエスト数を取得
 func (cc *ConohaClient) ObjectStorageRequests() (map[string]float64, error) {
 	// メトリクス取得
-	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/request")
+	resp, _, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/request")
 	if err != nil {
 		return nil, err
 	}
@@ -182,32 +190,41 @@ func (cc *ConohaClient) ObjectStorageRequests() (map[string]float64, error) {
 }
 
 // JSON 受け取り用
-type ObjectStorageSizeResponse struct {
-	Size Usage `json:"size"`
+type ObjectStorageResponse []Container
+type Container struct {
+	Count int    `json:"count"`
+	Bytes int    `json:"bytes"`
+	Name  string `json:"name"`
+}
+
+type ObjectStorageUsage struct {
+	containers []Container
+	quota      float64
 }
 
 // オブジェクトストレージの使用容量を取得
-func (cc *ConohaClient) ObjectStorageUsage() (map[string]float64, error) {
+func (cc *ConohaClient) ObjectStorageUsage() (*ObjectStorageUsage, error) {
 	// メトリクス取得
-	resp, err := cc.get(cc.accountEndpoint + "/object-storage/rrd/size")
+	resp, headers, err := cc.get(cc.objectStorageEndpoint + "?format=json")
 	if err != nil {
 		return nil, err
 	}
 
 	// JSONを読む
-	var uResp ObjectStorageSizeResponse
+	var uResp ObjectStorageResponse
 	if err := json.Unmarshal(resp, &uResp); err != nil {
 		return nil, err
 	}
 
-	// データ整形
-	data := uResp.Size.Data[len(uResp.Size.Data)-3]
-	usage := make(map[string]float64)
-	for i, label := range uResp.Size.Schema {
-		usage[label] = data[i]
+	quota, err := strconv.ParseFloat(headers.Get("X-Account-Meta-Quota-Bytes"), 64)
+	if err != nil {
+		return nil, err
 	}
 
-	return usage, nil
+	return &ObjectStorageUsage{
+		containers: uResp,
+		quota:      quota,
+	}, nil
 }
 
 // JSON 受け取り用
@@ -231,7 +248,7 @@ type Database struct {
 
 // データベース一覧取得
 func (cc *ConohaClient) Databases() ([]*Database, error) {
-	resp, err := cc.get(cc.databaseHostingEndpoint + "/databases")
+	resp, _, err := cc.get(cc.databaseHostingEndpoint + "/databases")
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +280,7 @@ type Quota struct {
 
 // データベース上限値取得（GB単位）
 func (cc *ConohaClient) DatabaseQuota(serviceID string) (*Quota, error) {
-	resp, err := cc.get(cc.databaseHostingEndpoint + "/services/" + serviceID + "/quotas")
+	resp, _, err := cc.get(cc.databaseHostingEndpoint + "/services/" + serviceID + "/quotas")
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +301,7 @@ type DatabaseInfoResponse struct {
 
 // データベース情報取得（GB単位）
 func (cc *ConohaClient) DatabaseInfo(databaseID string) (*Database, error) {
-	resp, err := cc.get(cc.databaseHostingEndpoint + "/databases/" + databaseID)
+	resp, _, err := cc.get(cc.databaseHostingEndpoint + "/databases/" + databaseID)
 	if err != nil {
 		return nil, err
 	}
