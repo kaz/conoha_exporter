@@ -11,21 +11,19 @@ cd conoha_exporter
 go mod download
 
 go build
-./conoha_exporter --help
+./conoha_exporter
 ```
 
 ## usage
 
-```
-Usage of ./conoha_exporter:
-  -password string
-    	ConoHa API user password
-  -port string
-    	Port number to listen on
-  -region string
-    	ConoHa region (default "tyo1")
-  -tenant-id string
-    	ConoHa tenant ID
-  -username string
-    	ConoHa API user name
+Put `conoha_exporter_config.yaml` in the same directory
+
+```yaml
+# Port to listen on
+port: 3030
+# Conoha region
+region: tyo1
+tenant_id: your-tenant-id
+username: conoha-api-username
+password: conoha-api-password
 ```

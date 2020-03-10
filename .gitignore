@@ -2,3 +2,4 @@ conoha_exporter
 gin-bin
 vendor
 .idea
+conoha_exporter_config.yaml

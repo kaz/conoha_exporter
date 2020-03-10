@@ -1,14 +1,21 @@
 package main
 
 import (
-	"flag"
-	"log"
-	"net/http"
-	"os"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
+	"log"
+	"net/http"
 )
+
+type Config struct {
+	Port     string `yaml:"port"`
+	Region   string `yaml:"region"`
+	TenantId string `yaml:"tenant_id"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
 
 // インデックスページ用 (Prometheusは別にココを触らないので、お好みで……)
 func indexPage(w http.ResponseWriter, _ *http.Request) {
@@ -29,20 +36,20 @@ func indexPage(w http.ResponseWriter, _ *http.Request) {
 func main() {
 	log.Println("ConoHa exporter started.")
 
-	// コマンドライン引数
-	port := flag.String("port", os.Getenv("PORT"), "Port number to listen on")
-	region := flag.String("region", "tyo1", "ConoHa region")
-	tenantId := flag.String("tenant-id", "", "ConoHa tenant ID")
-	username := flag.String("username", "", "ConoHa API user name")
-	password := flag.String("password", "", "ConoHa API user password")
-	flag.Parse()
+	// config.ymlを読み取る
+	buf, err := ioutil.ReadFile("./conoha_exporter_config.yaml")
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
-	if *port == "" {
-		*port = "3000"
+	var config Config
+	if err := yaml.Unmarshal(buf, &config); err != nil {
+		log.Fatal(err)
 	}
 
 	// ConoHa APIクライアントを作成
-	client, err := NewClient(*region, *tenantId, *username, *password)
+	client, err := NewClient(config.Region, config.TenantId, config.Username, config.Password)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,5 +71,5 @@ func main() {
 	// HTTPでメトリクスを出力
 	http.HandleFunc("/", indexPage)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":"+*port, nil))
+	log.Fatal(http.ListenAndServe(":"+config.Port, nil))
 }
