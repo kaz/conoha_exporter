@@ -5,6 +5,10 @@ on:
     tags:
       - v*
 
+env:
+  IMAGE_REPO: traptitech/conoha_exporter
+  IMAGE_NAME: conoha-exporter
+
 jobs:
   build:
     name: Build
@@ -21,3 +25,20 @@ jobs:
       uses: goreleaser/goreleaser-action@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  image:
+    name: Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set IMAGE_TAG env
+        run: echo ::set-env name=IMAGE_TAG::$(echo ${GITHUB_REF:11})
+      - uses: actions/checkout@v2
+      - name: Login GitHub Registry
+        run: docker login docker.pkg.github.com -u traPtitech -p ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Image
+        run: docker build -t docker.pkg.github.com/${IMAGE_REPO}/${IMAGE_NAME}:$IMAGE_TAG .
+      - name: Push image to GitHub Registry
+        run: docker push docker.pkg.github.com/${IMAGE_REPO}/${IMAGE_NAME}:$IMAGE_TAG
+      - name: Push image to GitHub Registry (latest)
+        run: |
+          docker tag docker.pkg.github.com/${IMAGE_REPO}/${IMAGE_NAME}:$IMAGE_TAG docker.pkg.github.com/${IMAGE_REPO}/${IMAGE_NAME}:latest
+          docker push docker.pkg.github.com/${IMAGE_REPO}/${IMAGE_NAME}:latest
