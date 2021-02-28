@@ -32,6 +32,7 @@ func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
 			// 4番目のnilには、固定ラベルをprometheus.Labelsで渡せる
 			prometheus.NewDesc("object_storage_requests", "Requests to Object Storage", []string{"method"}, nil),
 			prometheus.NewDesc("object_storage_quota", "Object Storage Quota", []string{}, nil),
+			prometheus.NewDesc("object_storage_total_usage", "Total Object Storage Usage", []string{}, nil),
 			prometheus.NewDesc("object_storage_usage", "Usage of Object Storage", []string{"container"}, nil),
 			prometheus.NewDesc("object_storage_count", "Object Counts of Object Storage", []string{"container"}, nil),
 			prometheus.NewDesc("database_usage", "Usage of Database (GB)", []string{"database"}, nil),
@@ -62,10 +63,11 @@ func (cc *ConohaCollector) AutoUpdate() {
 			log.Fatal(err)
 		}
 		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage.quota))
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, usage.total_usage))
 
 		for _, container := range usage.containers {
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, float64(container.Bytes), container.Name))
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[3], prometheus.GaugeValue, float64(container.Count), container.Name))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[3], prometheus.GaugeValue, float64(container.Bytes), container.Name))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[4], prometheus.GaugeValue, float64(container.Count), container.Name))
 		}
 
 		serviceIDs := make(map[string]bool)
@@ -76,7 +78,7 @@ func (cc *ConohaCollector) AutoUpdate() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[4], prometheus.GaugeValue, info.DbSize, db.DbName))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[5], prometheus.GaugeValue, info.DbSize, db.DbName))
 
 			serviceIDs[db.ServiceID] = true
 		}
@@ -87,8 +89,8 @@ func (cc *ConohaCollector) AutoUpdate() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[5], prometheus.GaugeValue, float64(quota.Quota), serviceID))
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.Quota), serviceID))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[7], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
 		}
 
 		// メトリクスデータ更新
