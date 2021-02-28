@@ -198,9 +198,9 @@ type Container struct {
 }
 
 type ObjectStorageUsage struct {
-	containers  []Container
-	quota       float64
-	total_usage float64
+	containers []Container
+	quota      float64
+	totalUsage float64
 }
 
 // オブジェクトストレージの使用容量を取得
@@ -222,15 +222,15 @@ func (cc *ConohaClient) ObjectStorageUsage() (*ObjectStorageUsage, error) {
 		return nil, err
 	}
 
-	total_usage, err := strconv.ParseFloat(headers.Get("X-Account-Bytes-Used"), 64)
+	totalUsage, err := strconv.ParseFloat(headers.Get("X-Account-Bytes-Used"), 64)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ObjectStorageUsage{
-		containers:  uResp,
-		quota:       quota,
-		total_usage: total_usage,
+		containers: uResp,
+		quota:      quota,
+		totalUsage: totalUsage,
 	}, nil
 }
 

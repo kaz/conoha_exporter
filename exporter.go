@@ -63,7 +63,7 @@ func (cc *ConohaCollector) AutoUpdate() {
 			log.Fatal(err)
 		}
 		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage.quota))
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, usage.total_usage))
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, usage.totalUsage))
 
 		for _, container := range usage.containers {
 			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[3], prometheus.GaugeValue, float64(container.Bytes), container.Name))
