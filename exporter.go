@@ -36,6 +36,7 @@ func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
 			prometheus.NewDesc("object_storage_count", "Object Counts of Object Storage", []string{"container"}, nil),
 			prometheus.NewDesc("database_usage", "Usage of Database (GB)", []string{"database"}, nil),
 			prometheus.NewDesc("database_quota", "Database Quota (GB)", []string{"service"}, nil),
+			prometheus.NewDesc("database_total_usage", "Total Database Usage (GB)", []string{"service"}, nil),
 		},
 		[]prometheus.Metric{},
 		databases,
@@ -81,12 +82,13 @@ func (cc *ConohaCollector) AutoUpdate() {
 		}
 
 		for serviceID := range serviceIDs {
-			// データベース上限値取得
+			// データベース上限値/合計使用量取得
 			quota, err := cc.DatabaseQuota(serviceID)
 			if err != nil {
 				log.Fatal(err)
 			}
 			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[5], prometheus.GaugeValue, float64(quota.Quota), serviceID))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
 		}
 
 		// メトリクスデータ更新
