@@ -38,6 +38,7 @@ func NewConohaCollector(client *ConohaClient) (*ConohaCollector, error) {
 			prometheus.NewDesc("database_usage", "Usage of Database (GB)", []string{"database"}, nil),
 			prometheus.NewDesc("database_quota", "Database Quota (GB)", []string{"service"}, nil),
 			prometheus.NewDesc("database_total_usage", "Total Database Usage (GB)", []string{"service"}, nil),
+			prometheus.NewDesc("total_deposit_amount", "Total Deposit Amount", []string{}, nil),
 		},
 		[]prometheus.Metric{},
 		databases,
@@ -92,6 +93,12 @@ func (cc *ConohaCollector) AutoUpdate() {
 			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.Quota), serviceID))
 			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[7], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
 		}
+
+		deposit, err := cc.BillingPaymentSummary()
+		if err != nil {
+			log.Fatal(err)
+		}
+		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[8], prometheus.GaugeValue, float64(deposit.Deposit)))
 
 		// メトリクスデータ更新
 		cc.Lock()
