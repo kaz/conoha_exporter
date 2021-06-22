@@ -5,9 +5,6 @@ on:
     tags:
       - v*
 
-env:
-  IMAGE_REPO: traptitech/conoha_exporter
-  IMAGE_NAME: conoha-exporter
 
 jobs:
   build:
@@ -46,5 +43,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${IMAGE_REPO}/${IMAGE_NAME}:${{ env.IMAGE_TAG }}
-            ghcr.io/${IMAGE_REPO}/${IMAGE_NAME}:latest
+            ghcr.io/traptitech/conoha_exporter:${{ env.IMAGE_TAG }}
+            ghcr.io/traptitech/conoha_exporter:latest
+            
