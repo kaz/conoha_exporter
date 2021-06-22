@@ -45,4 +45,3 @@ jobs:
           tags: |
             ghcr.io/traptitech/conoha_exporter:${{ env.IMAGE_TAG }}
             ghcr.io/traptitech/conoha_exporter:latest
-            
