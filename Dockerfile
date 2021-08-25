@@ -1,4 +1,4 @@
-FROM golang:1.16-alpine AS build
+FROM golang:1.17-alpine AS build
 RUN apk add --update --no-cache git
 WORKDIR /src
 COPY ./go.* ./
@@ -6,7 +6,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /conoha_exporter
 
-FROM alpine:3.13
+FROM alpine:3.14
 WORKDIR /app
 
 RUN apk add --update ca-certificates openssl && \
