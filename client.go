@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -180,7 +181,19 @@ func (cc *ConohaClient) ObjectStorageRequests() (map[string]float64, error) {
 	}
 
 	// データ整形
-	data := uResp.Request.Data[len(uResp.Request.Data)-3]
+	if len(uResp.Request.Data) == 0 {
+		return nil, errors.New("No data")
+	}
+	data := uResp.Request.Data[0]
+	for i, label := range uResp.Request.Schema {
+		if label == "unixtime" {
+			for _, v := range uResp.Request.Data {
+				if data[i] < v[i] {
+					data = v
+				}
+			}
+		}
+	}
 	usage := make(map[string]float64)
 	for i, label := range uResp.Request.Schema {
 		usage[label] = data[i]
