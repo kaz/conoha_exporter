@@ -6,7 +6,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /conoha_exporter
 
-FROM alpine:3.14
+FROM alpine:3.16
 WORKDIR /app
 
 RUN apk add --update ca-certificates openssl && \
