@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -110,6 +111,10 @@ func tokenRequester(region string, tenantId string, username string, password st
 		respBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return nil, err
+		}
+
+		if resp.StatusCode != 200 {
+			return nil, fmt.Errorf("non-200 response (%d). body: %s.", resp.StatusCode, respBytes)
 		}
 
 		// JSONを読む
