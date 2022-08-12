@@ -52,23 +52,24 @@ func (cc *ConohaCollector) AutoUpdate() {
 		// オブジェクトストレージへのリクエスト数を取得
 		requests, err := cc.ObjectStorageRequests()
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("ObjectStorageRequests error: %v\n", err)
+		} else {
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["get"], "get"))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["put"], "put"))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["delete"], "delete"))
 		}
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["get"], "get"))
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["put"], "put"))
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[0], prometheus.GaugeValue, requests["delete"], "delete"))
 
 		// オブジェクトストレージ使用容量を取得
 		usage, err := cc.ObjectStorageUsage()
 		if err != nil {
-			log.Fatal(err)
-		}
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage.quota))
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, usage.totalUsage))
-
-		for _, container := range usage.containers {
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[3], prometheus.GaugeValue, float64(container.Bytes), container.Name))
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[4], prometheus.GaugeValue, float64(container.Count), container.Name))
+			log.Printf("ObjectStorageUsage error: %v\n", err)
+		} else {
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[1], prometheus.GaugeValue, usage.quota))
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[2], prometheus.GaugeValue, usage.totalUsage))
+			for _, container := range usage.containers {
+				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[3], prometheus.GaugeValue, float64(container.Bytes), container.Name))
+				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[4], prometheus.GaugeValue, float64(container.Count), container.Name))
+			}
 		}
 
 		serviceIDs := make(map[string]bool)
@@ -77,28 +78,31 @@ func (cc *ConohaCollector) AutoUpdate() {
 			// データベース使用状況を取得
 			info, err := cc.DatabaseInfo(db.DatabaseID)
 			if err != nil {
-				log.Fatal(err)
-			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[5], prometheus.GaugeValue, info.DbSize, db.DbName))
+				log.Printf("DatabaseInfo(%s) error: %v\n", db.DatabaseID, err)
+			} else {
+				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[5], prometheus.GaugeValue, info.DbSize, db.DbName))
 
-			serviceIDs[db.ServiceID] = true
+				serviceIDs[db.ServiceID] = true
+			}
 		}
 
 		for serviceID := range serviceIDs {
 			// データベース上限値/合計使用量取得
 			quota, err := cc.DatabaseQuota(serviceID)
 			if err != nil {
-				log.Fatal(err)
+				log.Printf("DatabaseQuota(%s) error: %v\n", serviceID, err)
+			} else {
+				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.Quota), serviceID))
+				metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[7], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
 			}
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[6], prometheus.GaugeValue, float64(quota.Quota), serviceID))
-			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[7], prometheus.GaugeValue, float64(quota.TotalUsage), serviceID))
 		}
 
 		deposit, err := cc.BillingPaymentSummary()
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("BillingPaymentSumarry error: %v\n", err)
+		} else {
+			metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[8], prometheus.GaugeValue, float64(deposit.Deposit)))
 		}
-		metrics = append(metrics, prometheus.MustNewConstMetric(cc.describes[8], prometheus.GaugeValue, float64(deposit.Deposit)))
 
 		// メトリクスデータ更新
 		cc.Lock()
